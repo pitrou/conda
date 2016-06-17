@@ -15,13 +15,11 @@ from .install import (name_dist, linked as install_linked, is_fetched, is_extrac
                       linked_data, find_new_location, cached_url, dist2filename)
 from .compat import iteritems, itervalues
 from .config import is_url, url_channel, root_dir, envs_dirs, subdir
-from .fetch import fetch_index
 from .instructions import RM_FETCHED, FETCH, RM_EXTRACTED, EXTRACT, UNLINK, LINK
 from .plan import execute_actions
 from .resolve import Resolve, MatchSpec
 from .utils import md5_file, url_path as utils_url_path
-from .api import get_index
-
+from .index import get as get_index, fetch as fetch_index
 
 def conda_installed_files(prefix, exclude_self_build=False):
     """
@@ -47,7 +45,7 @@ def explicit(specs, prefix, verbose=False, force_extract=True, fetch_args=None, 
     fetch_args = fetch_args or {}
     index = index or {}
     verifies = []
-    channels = {}
+    channels = []
     for spec in specs:
         if spec == '@EXPLICIT':
             continue
@@ -103,7 +101,7 @@ def explicit(specs, prefix, verbose=False, force_extract=True, fetch_args=None, 
                     actions[RM_FETCHED].append(conflict)
                 if not is_file:
                     if fn not in index or index[fn].get('not_fetched'):
-                        channels[url_p + '/'] = (schannel, 0)
+                        channels.append(url_p + '/')
                     verifies.append((dist + '.tar.bz2', md5))
                 actions[FETCH].append(dist)
             actions[EXTRACT].append(dist)
@@ -116,6 +114,8 @@ def explicit(specs, prefix, verbose=False, force_extract=True, fetch_args=None, 
 
     # Pull the repodata for channels we are using
     if channels:
+        if 'unknown' in fetch_args:
+            del fetch_args['unknown']
         index.update(fetch_index(channels, **fetch_args))
 
     # Finish the MD5 verification

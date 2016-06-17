@@ -22,7 +22,7 @@ from logging import getLogger
 from . import __version__ as VERSION
 from .compat import urlparse, StringIO
 from .config import platform as config_platform, ssl_verify, get_proxy_servers
-from .utils import gnu_get_libc_version, yaml_bool
+from .utils import gnu_get_libc_version, yaml_bool, memoized
 
 RETRIES = 3
 
@@ -187,6 +187,37 @@ class S3Adapter(requests.adapters.BaseAdapter):
     def close(self):
         if self._temp_file:
             os.remove(self._temp_file)
+
+
+def handle_proxy_407(url, session):
+    """
+    Prompts the user for the proxy username and password and modifies the
+    proxy in the session object to include it.
+    """
+    # We could also use HTTPProxyAuth, but this does not work with https
+    # proxies (see https://github.com/kennethreitz/requests/issues/2061).
+    scheme = requests.packages.urllib3.util.url.parse_url(url).scheme
+    if scheme not in session.proxies:
+        sys.exit("""Could not find a proxy for %r. See
+http://conda.pydata.org/docs/html#configure-conda-for-use-behind-a-proxy-server
+for more information on how to configure proxies.""" % scheme)
+    username, passwd = get_proxy_username_and_pass(scheme)
+    session.proxies[scheme] = add_username_and_pass_to_url(
+                           session.proxies[scheme], username, passwd)
+
+
+def add_username_and_pass_to_url(url, username, passwd):
+    urlparts = list(requests.packages.urllib3.util.url.parse_url(url))
+    passwd = urllib_quote(passwd, '')
+    urlparts[1] = username + ':' + passwd
+    return unparse_url(urlparts)
+
+
+@memoized
+def get_proxy_username_and_pass(scheme):
+    username = input("\n%s proxy username: " % scheme)
+    passwd = getpass.getpass("Password:")
+    return username, passwd
 
 
 def url_to_S3_info(url):
